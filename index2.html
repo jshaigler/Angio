@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Angiogenesis Simulation</title>
+    <!-- Plotly for 3D plotting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.24.2/plotly.min.js"></script>
+    <!-- numeric.js (used here only if numeric operations are needed elsewhere) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --primary: #BB86FC;
+            --secondary: #03DAC6;
+            --accent: #CF6679;
+            --text: #E1E1E1;
+            --slider-bg: #333333;
+            --slider-thumb: #BB86FC;
+            --artery-color: #CF6679;
+            --vein-color: #03DAC6;
+            --arteriole-color: #FF5722;
+            --venule-color: #2196F3;
+            --capillary-color: #4CAF50;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header {
+            background-color: var(--card-bg);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 400;
+            color: var(--primary);
+        }
+
+        main {
+            display: flex;
+            flex: 1;
+            padding: 1rem;
+            gap: 1rem;
+        }
+
+        #plot-container {
+            flex: 1;
+            min-height: 600px;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #plot {
+            width: 100%;
+            height: 100%;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 1rem 2rem;
+            border-radius: 4px;
+            z-index: 100;
+            display: none;
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        #controls {
+            width: 300px;
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+        }
+
+        .slider-value {
+            color: var(--secondary);
+            font-weight: 500;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 5px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: var(--slider-bg);
+            border-radius: 5px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--slider-thumb);
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: var(--primary);
+            transform: scale(1.1);
+        }
+
+        select {
+            width: 100%;
+            padding: 0.5rem;
+            background-color: var(--slider-bg);
+            color: var(--text);
+            border: none;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: #000;
+            border: none;
+            padding: 0.8rem;
+            border-radius: 4px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 1rem;
+        }
+
+        button:hover {
+            background-color: #9d68db;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            margin-top: 1rem;
+            padding: 0.8rem;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 0.8rem;
+        }
+
+        .color-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+
+        .artery-color {
+            background-color: var(--artery-color);
+        }
+
+        .arteriole-color {
+            background-color: var(--arteriole-color);
+        }
+
+        .vein-color {
+            background-color: var(--vein-color);
+        }
+
+        .venule-color {
+            background-color: var(--venule-color);
+        }
+
+        .capillary-color {
+            background-color: var(--capillary-color);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>3D Angiogenesis Simulation</h1>
+    </header>
+
+    <main>
+        <!-- Plot Container -->
+        <div id="plot-container">
+            <div id="plot"></div>
+            <div id="loading">
+                <span class="spinner"></span>Calculating...
+            </div>
+        </div>
+
+        <!-- Controls Panel -->
+        <div id="controls">
+            <!-- Tissue Selector -->
+            <div class="slider-container">
+                <label for="tissue-select">Tissue Type</label>
+                <select id="tissue-select">
+                    <option value="Liver">Liver</option>
+                    <option value="Bone">Bone</option>
+                    <option value="Muscle">Muscle</option>
+                    <option value="Kidney">Kidney</option>
+                    <option value="Skin">Skin</option>
+                </select>
+            </div>
+
+            <!-- Slider: Max Depth -->
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Max Depth</span>
+                    <span class="slider-value" id="max-depth-value">5</span>
+                </div>
+                <input
+                    type="range"
+                    id="max-depth"
+                    min="2"
+                    max="8"
+                    step="1"
+                    value="5"
+                />
+            </div>
+
+            <!-- Slider: Angle Range -->
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Angle Range (°)</span>
+                    <span class="slider-value" id="angle-range-value">30</span>
+                </div>
+                <input
+                    type="range"
+                    id="angle-range"
+                    min="10"
+                    max="60"
+                    step="5"
+                    value="30"
+                />
+            </div>
+
+            <!-- Slider: Branch Length -->
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Branch Length</span>
+                    <span class="slider-value" id="branch-length-value">0.10</span>
+                </div>
+                <input
+                    type="range"
+                    id="branch-length"
+                    min="0.05"
+                    max="0.20"
+                    step="0.01"
+                    value="0.10"
+                />
+            </div>
+
+            <!-- Slider: Capillary Threshold -->
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Capillary Threshold</span>
+                    <span class="slider-value" id="capillary-threshold-value">0.15</span>
+                </div>
+                <input
+                    type="range"
+                    id="capillary-threshold"
+                    min="0.05"
+                    max="0.50"
+                    step="0.05"
+                    value="0.15"
+                />
+            </div>
+
+            <!-- Slider: Oxygen Scale -->
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Oxygen Scale</span>
+                    <span class="slider-value" id="oxygen-scale-value">0.05</span>
+                </div>
+                <input
+                    type="range"
+                    id="oxygen-scale"
+                    min="0.01"
+                    max="0.20"
+                    step="0.01"
+                    value="0.05"
+                />
+            </div>
+
+            <!-- Slider: Number of Arteries -->
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Number of Arteries</span>
+                    <span class="slider-value" id="num-arteries-value">3</span>
+                </div>
+                <input
+                    type="range"
+                    id="num-arteries"
+                    min="1"
+                    max="5"
+                    step="1"
+                    value="3"
+                />
+            </div>
+
+            <!-- Slider: Number of Veins -->
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Number of Veins</span>
+                    <span class="slider-value" id="num-veins-value">3</span>
+                </div>
+                <input
+                    type="range"
+                    id="num-veins"
+                    min="1"
+                    max="5"
+                    step="1"
+                    value="3"
+                />
+            </div>
+
+            <!-- Legend -->
+            <div class="legend">
+                <div class="legend-item">
+                    <span class="color-indicator artery-color"></span>
+                    <span>Arteries</span>
+                </div>
+                <div class="legend-item">
+                    <span class="color-indicator arteriole-color"></span>
+                    <span>Arterioles</span>
+                </div>
+                <div class="legend-item">
+                    <span class="color-indicator capillary-color"></span>
+                    <span>Capillaries</span>
+                </div>
+                <div class="legend-item">
+                    <span class="color-indicator venule-color"></span>
+                    <span>Venules</span>
+                </div>
+                <div class="legend-item">
+                    <span class="color-indicator vein-color"></span>
+                    <span>Veins</span>
+                </div>
+            </div>
+
+            <!-- Recalculate Button -->
+            <button id="update-btn">Recalculate</button>
+        </div>
+    </main>
+
+    <script>
+        // -----------------------------
+        // 0. Tissue Configurations
+        // -----------------------------
+        const tissueConfigs = {
+            "Liver": {
+                cellTypes: ["Hepatocyte", "Kupffer", "Stellate", "Endothelial"],
+                arterioleDepth: 2,
+                venuleDepth: 2,
+                stiffnessBias: 0.5,
+                vegfMultiplier: 1.0,
+                capillaryDensity: 1.0
+            },
+            "Bone": {
+                cellTypes: ["Osteoblast", "Osteoclast", "Osteocyte", "Endothelial"],
+                arterioleDepth: 2,
+                venuleDepth: 2,
+                stiffnessBias: 1.0,
+                vegfMultiplier: 0.8,
+                capillaryDensity: 0.8
+            },
+            "Muscle": {
+                cellTypes: ["Myocyte", "Fibroblast", "Endothelial", "Satellite"],
+                arterioleDepth: 2,
+                venuleDepth: 2,
+                stiffnessBias: 0.3,
+                vegfMultiplier: 1.2,
+                capillaryDensity: 1.5
+            },
+            "Kidney": {
+                cellTypes: ["Podocyte", "Mesangial", "Endothelial", "Epithelial"],
+                arterioleDepth: 2,
+                venuleDepth: 2,
+                stiffnessBias: 0.7,
+                vegfMultiplier: 1.1,
+                capillaryDensity: 1.3
+            },
+            "Skin": {
+                cellTypes: ["Keratinocyte", "Fibroblast", "Endothelial", "Melanocyte"],
+                arterioleDepth: 2,
+                venuleDepth: 2,
+                stiffnessBias: 0.2,
+                vegfMultiplier: 0.9,
+                capillaryDensity: 1.2
+            }
+        };
+
+        // -----------------------------
+        // 1. PARAMETERS & DEFAULTS
+        // -----------------------------
+        const params = {
+            tissueType: "Liver",
+            maxDepth: 5,
+            angleRange: 30,
+            initialBranchLength: 0.1,
+            capillaryThreshold: 0.15,
+            oxygenScale: 0.05,
+            numArteries: 3,
+            numVeins: 3
+        };
+
+        // -----------------------------
+        // 2. VECTOR OPERATIONS CLASS
+        // -----------------------------
+        class Vector3 {
+            constructor(x = 0, y = 0, z = 0) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+            }
+
+            static dot(a, b) {
+                return a.x * b.x + a.y * b.y + a.z * b.z;
+            }
+
+            static cross(a, b) {
+                return new Vector3(
+                    a.y * b.z - a.z * b.y,
+                    a.z * b.x - a.x * b.z,
+                    a.x * b.y - a.y * b.x
+                );
+            }
+
+            static subtract(a, b) {
+                return new Vector3(a.x - b.x, a.y - b.y, a.z - b.z);
+            }
+
+            static add(a, b) {
+                return new Vector3(a.x + b.x, a.y + b.y, a.z + b.z);
+            }
+
+            static scale(v, s) {
+                return new Vector3(v.x * s, v.y * s, v.z * s);
+            }
+
+            norm() {
+                return Math.sqrt(this.x ** 2 + this.y ** 2 + this.z ** 2);
+            }
+
+            normalize() {
+                const n = this.norm();
+                if (n === 0) return new Vector3(0, 0, 0);
+                return new Vector3(this.x / n, this.y / n, this.z / n);
+            }
+
+            equals(other, tol = 1e-10) {
+                return (
+                    Math.abs(this.x - other.x) < tol &&
+                    Math.abs(this.y - other.y) < tol &&
+                    Math.abs(this.z - other.z) < tol
+                );
+            }
+
+            rotated(axis, angle) {
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+
+                const term1 = Vector3.scale(this, cosA);
+                const term2 = Vector3.scale(Vector3.cross(axis, this), sinA);
+                const term3 = Vector3.scale(
+                    axis,
+                    Vector3.dot(axis, this) * (1 - cosA)
+                );
+
+                return new Vector3(
+                    term1.x + term2.x + term3.x,
+                    term1.y + term2.y + term3.y,
+                    term1.z + term2.z + term3.z
+                );
+            }
+        }
+
+        // -----------------------------
+        // 3. RANDOM DIRECTION IN CONE
+        // -----------------------------
+        const randomDirectionInCone = (baseDir, angleDeg) => {
+            const angleRad = (angleDeg * Math.PI) / 180;
+            const cosTheta = Math.cos(angleRad) + Math.random() * (1 - Math.cos(angleRad));
+            const theta = Math.acos(cosTheta);
+            const phi = Math.random() * 2 * Math.PI;
+
+            const local = new Vector3(
+                Math.sin(theta) * Math.cos(phi),
+                Math.sin(theta) * Math.sin(phi),
+                Math.cos(theta)
+            );
+
+            const zAxis = new Vector3(0, 0, 1);
+            if (baseDir.equals(zAxis)) {
+                return local;
+            }
+            if (baseDir.equals(Vector3.scale(zAxis, -1))) {
+                return local.rotated(new Vector3(1, 0, 0), Math.PI);
+            }
+
+            const axis = Vector3.cross(zAxis, baseDir).normalize();
+            const angle = Math.acos(Vector3.dot(zAxis, baseDir));
+
+            return local.rotated(axis, angle).normalize();
+        };
+
+        // -----------------------------
+        // 4. DISTANCE FUNCTIONS
+        // -----------------------------
+        const pointToSegmentDistance = (P, A, B) => {
+            const AB = Vector3.subtract(B, A);
+            const ABnorm = AB.norm();
+            if (ABnorm < 1e-10) {
+                return Vector3.subtract(P, A).norm();
+            }
+            const AP = Vector3.subtract(P, A);
+            let t = Vector3.dot(AP, AB) / Vector3.dot(AB, AB);
+            if (t < 0) {
+                return AP.norm();
+            } else if (t > 1) {
+                return Vector3.subtract(P, B).norm();
+            }
+            const projection = Vector3.add(A, Vector3.scale(AB, t));
+            return Vector3.subtract(P, projection).norm();
+        };
+
+        const nearestPointOnSegment = (P, A, B) => {
+            const AB = Vector3.subtract(B, A);
+            const ABnorm = AB.norm();
+            if (ABnorm < 1e-10) {
+                return new Vector3(A.x, A.y, A.z);
+            }
+            const AP = Vector3.subtract(P, A);
+            let t = Vector3.dot(AP, AB) / Vector3.dot(AB, AB);
+            t = Math.max(0, Math.min(1, t));
+            return new Vector3(A.x + AB.x * t, A.y + AB.y * t, A.z + AB.z * t);
+        };
+
+        // -----------------------------
+        // 5. SIMULATION CORE
+        // -----------------------------
+        const simulateVasculature3D = (options) => {
+            const {
+                tissueType,
+                maxDepth,
+                angleRange,
+                initialBranchLength,
+                capillaryThreshold,
+                oxygenScale,
+                numArteries,
+                numVeins
+            } = options;
+
+            const config = tissueConfigs[tissueType];
+
+            // Biomimetic cell placement by tissue type
+            const cells = [];
+            const cellTypeLabels = [];
+            const cellRequirements = [];
+            const nTotal = 1000; // total cells
+            const nAxis = 10;
+            const types = config.cellTypes;
+
+            function randomInSphere(center, radius) {
+                // Uniform random point in sphere
+                let u = Math.random();
+                let v = Math.random();
+                let w = Math.random();
+                let theta = 2 * Math.PI * u;
+                let phi = Math.acos(2 * v - 1);
+                let r = Math.cbrt(w) * radius;
+                return [
+                    center[0] + r * Math.sin(phi) * Math.cos(theta),
+                    center[1] + r * Math.sin(phi) * Math.sin(theta),
+                    center[2] + r * Math.cos(phi)
+                ];
+            }
+
+            if (params.tissueType === "Liver") {
+                // Hepatocytes: core (60%)
+                for (let i = 0; i < 0.6 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.35);
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Hepatocyte");
+                    cellRequirements.push(Math.random() * 0.2 + 0.7);
+                }
+                // Endothelial: shell (10%)
+                for (let i = 0; i < 0.1 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.5);
+                    let d = Math.sqrt((x-0.5)**2 + (y-0.5)**2 + (z-0.5)**2);
+                    if (d < 0.38) { i--; continue; }
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Endothelial");
+                    cellRequirements.push(Math.random() * 0.2 + 0.6);
+                }
+                // Kupffer: scattered (15%)
+                for (let i = 0; i < 0.15 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.45);
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Kupffer");
+                    cellRequirements.push(Math.random() * 0.2 + 0.65);
+                }
+                // Stellate: periphery (15%)
+                for (let i = 0; i < 0.15 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.5);
+                    let d = Math.sqrt((x-0.5)**2 + (y-0.5)**2 + (z-0.5)**2);
+                    if (d < 0.4) { i--; continue; }
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Stellate");
+                    cellRequirements.push(Math.random() * 0.2 + 0.6);
+                }
+            } else if (params.tissueType === "Skin") {
+                // Keratinocyte: top layer (40%)
+                for (let i = 0; i < 0.4 * nTotal; i++) {
+                    let x = Math.random();
+                    let y = Math.random();
+                    let z = Math.random() * 0.15 + 0.8;
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Keratinocyte");
+                    cellRequirements.push(Math.random() * 0.2 + 0.7);
+                }
+                // Melanocyte: upper-mid (10%)
+                for (let i = 0; i < 0.1 * nTotal; i++) {
+                    let x = Math.random();
+                    let y = Math.random();
+                    let z = Math.random() * 0.1 + 0.7;
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Melanocyte");
+                    cellRequirements.push(Math.random() * 0.2 + 0.7);
+                }
+                // Endothelial: lower (20%)
+                for (let i = 0; i < 0.2 * nTotal; i++) {
+                    let x = Math.random();
+                    let y = Math.random();
+                    let z = Math.random() * 0.2 + 0.1;
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Endothelial");
+                    cellRequirements.push(Math.random() * 0.2 + 0.6);
+                }
+                // Fibroblast: dermis (30%)
+                for (let i = 0; i < 0.3 * nTotal; i++) {
+                    let x = Math.random();
+                    let y = Math.random();
+                    let z = Math.random() * 0.3 + 0.3;
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Fibroblast");
+                    cellRequirements.push(Math.random() * 0.2 + 0.65);
+                }
+            } else if (params.tissueType === "Bone") {
+                // Osteocyte: core (50%)
+                for (let i = 0; i < 0.5 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.3);
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Osteocyte");
+                    cellRequirements.push(Math.random() * 0.2 + 0.7);
+                }
+                // Osteoblast: surface (20%)
+                for (let i = 0; i < 0.2 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.5);
+                    let d = Math.sqrt((x-0.5)**2 + (y-0.5)**2 + (z-0.5)**2);
+                    if (d < 0.35) { i--; continue; }
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Osteoblast");
+                    cellRequirements.push(Math.random() * 0.2 + 0.65);
+                }
+                // Osteoclast: scattered (15%)
+                for (let i = 0; i < 0.15 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.45);
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Osteoclast");
+                    cellRequirements.push(Math.random() * 0.2 + 0.65);
+                }
+                // Endothelial: periphery (15%)
+                for (let i = 0; i < 0.15 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.5);
+                    let d = Math.sqrt((x-0.5)**2 + (y-0.5)**2 + (z-0.5)**2);
+                    if (d < 0.4) { i--; continue; }
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Endothelial");
+                    cellRequirements.push(Math.random() * 0.2 + 0.6);
+                }
+            } else if (params.tissueType === "Muscle") {
+                // Myocyte: core (60%)
+                for (let i = 0; i < 0.6 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.35);
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Myocyte");
+                    cellRequirements.push(Math.random() * 0.2 + 0.7);
+                }
+                // Endothelial: periphery (15%)
+                for (let i = 0; i < 0.15 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.5);
+                    let d = Math.sqrt((x-0.5)**2 + (y-0.5)**2 + (z-0.5)**2);
+                    if (d < 0.4) { i--; continue; }
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Endothelial");
+                    cellRequirements.push(Math.random() * 0.2 + 0.6);
+                }
+                // Fibroblast: scattered (15%)
+                for (let i = 0; i < 0.15 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.45);
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Fibroblast");
+                    cellRequirements.push(Math.random() * 0.2 + 0.65);
+                }
+                // Satellite: outer (10%)
+                for (let i = 0; i < 0.1 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.5);
+                    let d = Math.sqrt((x-0.5)**2 + (y-0.5)**2 + (z-0.5)**2);
+                    if (d < 0.42) { i--; continue; }
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Satellite");
+                    cellRequirements.push(Math.random() * 0.2 + 0.65);
+                }
+            } else if (params.tissueType === "Kidney") {
+                // Podocyte: core (30%)
+                for (let i = 0; i < 0.3 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.28);
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Podocyte");
+                    cellRequirements.push(Math.random() * 0.2 + 0.7);
+                }
+                // Mesangial: mid (20%)
+                for (let i = 0; i < 0.2 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.38);
+                    let d = Math.sqrt((x-0.5)**2 + (y-0.5)**2 + (z-0.5)**2);
+                    if (d < 0.28) { i--; continue; }
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Mesangial");
+                    cellRequirements.push(Math.random() * 0.2 + 0.68);
+                }
+                // Endothelial: periphery (30%)
+                for (let i = 0; i < 0.3 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.5);
+                    let d = Math.sqrt((x-0.5)**2 + (y-0.5)**2 + (z-0.5)**2);
+                    if (d < 0.38) { i--; continue; }
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Endothelial");
+                    cellRequirements.push(Math.random() * 0.2 + 0.6);
+                }
+                // Epithelial: outer (20%)
+                for (let i = 0; i < 0.2 * nTotal; i++) {
+                    let [x, y, z] = randomInSphere([0.5, 0.5, 0.5], 0.5);
+                    let d = Math.sqrt((x-0.5)**2 + (y-0.5)**2 + (z-0.5)**2);
+                    if (d < 0.42) { i--; continue; }
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push("Epithelial");
+                    cellRequirements.push(Math.random() * 0.2 + 0.65);
+                }
+            } else {
+                // Fallback: uniform random
+                for (let i = 0; i < nTotal; i++) {
+                    let x = Math.random();
+                    let y = Math.random();
+                    let z = Math.random();
+                    cells.push(new Vector3(x, y, z));
+                    cellTypeLabels.push(types[Math.floor(Math.random() * types.length)]);
+                    cellRequirements.push(Math.random() * 0.3 + 0.6);
+                }
+            }
+
+            // Fix random seed
+            let seed = 42;
+            const rng = () => {
+                seed = (1103515245 * seed + 12345) % 0x80000000;
+                return seed / 0x80000000;
+            };
+            Math.random = rng;
+
+            // Growth factor field
+            const gfField = new GrowthFactorField(20, 0.08, 0.01);
+            // Stiffness field
+            const stiffnessField = new StiffnessField(20);
+
+            // Add VEGF at each cell (scaled by tissue-specific multiplier)
+            cells.forEach((cell) => {
+                gfField.addVEGF(cell.x, cell.y, cell.z, 2.0 * config.vegfMultiplier);
+            });
+            // Anti-angiogenic sources at corners
+            gfField.addAnti(0, 0, 0, 10.0);
+            gfField.addAnti(1, 1, 1, 10.0);
+
+            // Initialize vessel tips
+            let vesselTips = [];
+            let segments = [];
+            for (let i = 0; i < numArteries; i++) {
+                const startPoint = new Vector3(
+                    0,
+                    Math.random() * 0.4 + 0.3,
+                    Math.random() * 0.4 + 0.3
+                );
+                vesselTips.push({
+                    pos: startPoint,
+                    dir: new Vector3(1, 0, 0),
+                    type: "artery",
+                    depth: 0,
+                    thickness: 3.0
+                });
+            }
+            for (let i = 0; i < numVeins; i++) {
+                const startPoint = new Vector3(
+                    1,
+                    Math.random() * 0.4 + 0.3,
+                    Math.random() * 0.4 + 0.3
+                );
+                vesselTips.push({
+                    pos: startPoint,
+                    dir: new Vector3(-1, 0, 0),
+                    type: "vein",
+                    depth: 0,
+                    thickness: 3.0
+                });
+            }
+
+            const maxSteps = maxDepth * 4;
+            const minBranchLength = initialBranchLength * 0.4;
+            const minBranchSeparation = 0.03;
+
+            // Notch-Delta setup
+            let vesselTipsND = vesselTips.map(tip => ({
+                ...tip,
+                notch: Math.random(),
+                delta: Math.random()
+            }));
+
+            for (let step = 0; step < maxSteps; step++) {
+                // Update Notch-Delta
+                for (let i = 0; i < vesselTipsND.length; i++) {
+                    let tip = vesselTipsND[i];
+                    let neighbors = vesselTipsND.filter((t, j) => i !== j && Vector3.subtract(tip.pos, t.pos).norm() < 0.08);
+                    let meanDelta = neighbors.length > 0 ? neighbors.reduce((sum, n) => sum + n.delta, 0) / neighbors.length : 0;
+                    tip.notch += 0.2 * (meanDelta - tip.notch);
+                    tip.delta += 0.2 * ((1 - tip.notch) - tip.delta);
+                    tip.notch = Math.max(0, Math.min(1, tip.notch));
+                    tip.delta = Math.max(0, Math.min(1, tip.delta));
+                }
+
+                let newTipsND = [];
+                for (const tip of vesselTipsND) {
+                    if (tip.depth >= maxDepth) continue;
+                    const { vegf, anti } = gfField.sample(tip.pos.x, tip.pos.y, tip.pos.z);
+                    const stiffness = stiffnessField.sample(tip.pos.x, tip.pos.y, tip.pos.z) * config.stiffnessBias;
+                    const stiffnessGrad = estimateStiffnessGradient(stiffnessField, tip.pos);
+                    const sproutProb = Math.max(0, Math.min(1,
+                        0.2 +
+                        0.2 * (vegf * config.vegfMultiplier) -
+                        0.3 * anti +
+                        0.3 * tip.delta -
+                        0.2 * tip.notch -
+                        0.15 * stiffness
+                    ));
+                    if (Math.random() > sproutProb) continue;
+
+                    const grad = estimateGradient(gfField, tip.pos);
+                    let newDir = grad.norm() > 0.01 ? grad.normalize() : tip.dir;
+                    if (stiffnessGrad.norm() > 0.01) {
+                        newDir = Vector3.subtract(newDir, Vector3.scale(stiffnessGrad.normalize(), 0.7)).normalize();
+                    }
+                    const angleJitter = angleRange * (0.7 + 0.6 * Math.random());
+                    newDir = randomDirectionInCone(newDir, angleJitter);
+
+                    let branchLength = initialBranchLength * (0.8 + 0.3 * Math.random()) * Math.pow(0.85, tip.depth);
+                    branchLength = Math.max(branchLength, minBranchLength);
+                    let thickness = tip.thickness * (0.7 + 0.2 * Math.random());
+                    thickness = Math.max(thickness, 0.3);
+
+                    const newPos = Vector3.add(tip.pos, Vector3.scale(newDir, branchLength));
+                    if (
+                        newPos.x < 0 || newPos.x > 1 ||
+                        newPos.y < 0 || newPos.y > 1 ||
+                        newPos.z < 0 || newPos.z > 1
+                    ) continue;
+
+                    let tooClose = false;
+                    for (const seg of segments) {
+                        if (pointToSegmentDistance(newPos, seg.start, seg.end) < minBranchSeparation) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                    if (tooClose) continue;
+
+                    let segType = tip.type;
+                    if (tip.type === "artery" && tip.depth >= config.arterioleDepth) {
+                        segType = "arteriole";
+                    }
+                    if ((tip.type === "vein" || tip.type === "venule") && tip.depth >= config.venuleDepth) {
+                        segType = "venule";
+                    }
+
+                    let anastomosed = false;
+                    for (const otherTip of vesselTipsND) {
+                        if (otherTip === tip) continue;
+                        if (tip.type !== otherTip.type && Vector3.subtract(newPos, otherTip.pos).norm() < 0.07) {
+                            segments.push({
+                                start: tip.pos,
+                                end: otherTip.pos,
+                                type: "capillary",
+                                thickness: 0.5
+                            });
+                            anastomosed = true;
+                            break;
+                        }
+                    }
+                    if (anastomosed) continue;
+
+                    segments.push({
+                        start: tip.pos,
+                        end: newPos,
+                        type: segType,
+                        thickness
+                    });
+                    newTipsND.push({
+                        pos: newPos,
+                        dir: newDir,
+                        type: tip.type,
+                        depth: tip.depth + 1,
+                        thickness,
+                        notch: tip.notch,
+                        delta: tip.delta
+                    });
+                }
+                vesselTipsND = vesselTipsND.concat(newTipsND);
+                gfField.step();
+            }
+            vesselTips = vesselTipsND;
+
+            // Capillary connections
+            const arteryEnds = segments.filter(s => s.type === "artery" || s.type === "arteriole").map(s => s.end);
+            const veinEnds = segments.filter(s => s.type === "vein" || s.type === "venule").map(s => s.end);
+            const usedVeins = new Set();
+            arteryEnds.forEach(A => {
+                let minDist = Infinity;
+                let nearestV = null;
+                let nearestVIdx = -1;
+                veinEnds.forEach((V, idx) => {
+                    if (usedVeins.has(idx)) return;
+                    const d = Vector3.subtract(A, V).norm();
+                    if (d < minDist) {
+                        minDist = d;
+                        nearestV = V;
+                        nearestVIdx = idx;
+                    }
+                });
+                if (nearestV === null) {
+                    minDist = Infinity;
+                    veinEnds.forEach((V, idx) => {
+                        const d = Vector3.subtract(A, V).norm();
+                        if (d < minDist) {
+                            minDist = d;
+                            nearestV = V;
+                            nearestVIdx = idx;
+                        }
+                    });
+                }
+                if (nearestV) {
+                    segments.push({
+                        start: A,
+                        end: nearestV,
+                        type: "capillary",
+                        thickness: 0.5
+                    });
+                    usedVeins.add(nearestVIdx);
+                }
+            });
+
+            // Prune short terminals
+            const minTerminalLength = initialBranchLength * 0.5;
+            segments = segments.filter(seg => {
+                if ((seg.type === "artery" || seg.type === "arteriole" || seg.type === "venule" || seg.type === "vein")) {
+                    const len = Vector3.subtract(seg.end, seg.start).norm();
+                    return len > minTerminalLength;
+                }
+                return true;
+            });
+
+            // Capillary sprouting to cells
+            let oxygenLevels = computeOxygenLevels(cells, segments, oxygenScale);
+            const maxIters = 5;
+            let iter = 0;
+            while (
+                oxygenLevels.some((o, idx) => o < cellRequirements[idx]) &&
+                iter < maxIters
+            ) {
+                for (let i = 0; i < cells.length; i++) {
+                    if (oxygenLevels[i] < cellRequirements[i]) {
+                        let minD = Infinity;
+                        let nearestPt = null;
+                        for (let s = 0; s < segments.length; s++) {
+                            const seg = segments[s];
+                            if (["artery", "arteriole", "venule", "vein", "capillary"].includes(seg.type)) {
+                                const A = seg.start;
+                                const B = seg.end;
+                                const pt = nearestPointOnSegment(cells[i], A, B);
+                                const d = Vector3.subtract(cells[i], pt).norm();
+                                if (d < minD) {
+                                    minD = d;
+                                    nearestPt = pt;
+                                }
+                            }
+                        }
+                        if (nearestPt) {
+                            segments.push({
+                                start: nearestPt,
+                                end: cells[i],
+                                type: "capillary",
+                                thickness: 0.5
+                            });
+                        }
+                    }
+                }
+                oxygenLevels = computeOxygenLevels(cells, segments, oxygenScale);
+                iter++;
+            }
+
+            // Regression & pruning
+            const segmentFlow = new Array(segments.length).fill(0);
+            const endPointMap = new Map();
+            segments.forEach((seg, idx) => {
+                const key = `${seg.end.x.toFixed(4)},${seg.end.y.toFixed(4)},${seg.end.z.toFixed(4)}`;
+                if (!endPointMap.has(key)) endPointMap.set(key, []);
+                endPointMap.get(key).push(idx);
+            });
+            segments.forEach((seg, idx) => {
+                const key = `${seg.end.x.toFixed(4)},${seg.end.y.toFixed(4)},${seg.end.z.toFixed(4)}`;
+                if (endPointMap.has(key)) {
+                    segmentFlow[idx] = endPointMap.get(key).length;
+                }
+            });
+            segments = segments.filter((seg, idx) => {
+                if (seg.type === "capillary" && segmentFlow[idx] === 0) {
+                    let isCell = false;
+                    for (const cell of cells) {
+                        if (Vector3.subtract(seg.end, cell).norm() < 0.01) {
+                            isCell = true;
+                            break;
+                        }
+                    }
+                    return isCell;
+                }
+                return true;
+            });
+
+            // Perfusion / Flow simulation
+            const segmentFlows = new Array(segments.length).fill(0);
+            const startMap = new Map();
+            segments.forEach((seg, idx) => {
+                const startKey = `${seg.start.x.toFixed(4)},${seg.start.y.toFixed(4)},${seg.start.z.toFixed(4)}`;
+                if (!startMap.has(startKey)) startMap.set(startKey, []);
+                startMap.get(startKey).push(idx);
+            });
+            const arteryRoots = [];
+            segments.forEach((seg, idx) => {
+                if (seg.type === "artery" && Math.abs(seg.start.x) < 1e-3) {
+                    arteryRoots.push(idx);
+                }
+            });
+            function assignFlow(idx, flow) {
+                segmentFlows[idx] += flow;
+                const seg = segments[idx];
+                const endKey = `${seg.end.x.toFixed(4)},${seg.end.y.toFixed(4)},${seg.end.z.toFixed(4)}`;
+                const downstream = startMap.get(endKey) || [];
+                if (downstream.length === 0) return;
+                const splitFlow = flow / downstream.length;
+                downstream.forEach(childIdx => {
+                    assignFlow(childIdx, splitFlow);
+                });
+            }
+            arteryRoots.forEach(idx => assignFlow(idx, 1.0));
+            const maxFlow = Math.max(...segmentFlows, 1e-6);
+            for (let i = 0; i < segmentFlows.length; i++) segmentFlows[i] /= maxFlow;
+
+            // --- Oxygen delivery with sub-vessel layers ---
+            const cellOxygen = cells.map(cell => {
+                let oxy = 0;
+                for (let i = 0; i < segments.length; i++) {
+                    const seg = segments[i];
+                    const dist = pointToSegmentDistance(cell, seg.start, seg.end);
+                    // Add up thicknesses for total wall
+                    const wall = seg.basementMembrane + seg.glycocalyx + 1.0; // 1.0 µm for endothelium
+                    // Pericyte coverage reduces effective permeability
+                    const pericyteFactor = 1 - 0.5 * seg.pericyteCoverage;
+                    // Oxygen decays with distance and wall thickness
+                    oxy += segmentFlows[i] * Math.exp(-dist / oxygenScale) * Math.exp(-wall * 2) * pericyteFactor;
+                }
+                return oxy;
+            });
+
+            // --- Identify non-physiological segments for visualization ---
+            const nonPhysioSegs = segments.filter(s => s.nonPhysio);
+
+            // --- Return non-physiological segments for visualization ---
+            return { segments, cells, cellTypeLabels, cellOxygen, nonPhysioSegs };
+        };
+
+        // Compute oxygen concentration at each cell location
+        const computeOxygenLevels = (cells, segments, oxygenScale) => {
+            const levels = cells.map((cell) => {
+                let minDist = Infinity;
+                for (const seg of segments) {
+                    const dist = pointToSegmentDistance(cell, seg.start, seg.end);
+                    if (dist < minDist) minDist = dist;
+                }
+                return Math.exp(-minDist / oxygenScale);
+            });
+            return levels;
+        };
+
+        // -----------------------------
+        // 6. VISUALIZATION (PLOTLY)
+        // -----------------------------
+        const createVisualization = (segments, cells, cellTypeLabels, cellOxygen, nonPhysioSegs) => {
+            const arterySegs = segments.filter((s) => s.type === "artery");
+            const arterioleSegs = segments.filter((s) => s.type === "arteriole");
+            const capSegs = segments.filter((s) => s.type === "capillary");
+            const venuleSegs = segments.filter((s) => s.type === "venule");
+            const veinSegs = segments.filter((s) => s.type === "vein");
+
+            const generateCurvePoints = (P0, P1, nPoints = 20, curvature = 0.3) => {
+                const mid = new Vector3(
+                    (P0.x + P1.x) / 2,
+                    (P0.y + P1.y) / 2,
+                    (P0.z + P1.z) / 2
+                );
+                const d = Vector3.subtract(P1, P0);
+                const length = d.norm();
+                if (length === 0) return Array(nPoints).fill(P0);
+
+                const randVec = new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+                const proj = Vector3.scale(d, Vector3.dot(randVec, d) / (length * length));
+                let perp = Vector3.subtract(randVec, proj);
+                perp = perp.norm() === 0
+                    ? new Vector3(0, 0, 0)
+                    : Vector3.scale(perp, 1 / perp.norm());
+                const control = Vector3.add(
+                    mid,
+                    Vector3.scale(perp, curvature * length)
+                );
+
+                const curvePts = [];
+                for (let i = 0; i < nPoints; i++) {
+                    const t = i / (nPoints - 1);
+                    const u = 1 - t;
+                    const x = u * u * P0.x + 2 * u * t * control.x + t * t * P1.x;
+                    const y = u * u * P0.y + 2 * u * t * control.y + t * t * P1.y;
+                    const z = u * u * P0.z + 2 * u * t * control.z + t * t * P1.z;
+                    curvePts.push([x, y, z]);
+                }
+                return curvePts;
+            };
+
+            const createVesselTrace = (vessels, color, name, width) => {
+                const x = [];
+                const y = [];
+                const z = [];
+                for (const seg of vessels) {
+                    const P0 = seg.start;
+                    const P1 = seg.end;
+                    const curve = generateCurvePoints(P0, P1);
+                    curve.forEach((pt) => {
+                        x.push(pt[0]);
+                        y.push(pt[1]);
+                        z.push(pt[2]);
+                    });
+                    x.push(null);
+                    y.push(null);
+                    z.push(null);
+                }
+                return {
+                    type: "scatter3d",
+                    mode: "lines",
+                    x,
+                    y,
+                    z,
+                    line: { color, width },
+                    name
+                };
+            };
+
+            // Cell traces: group by type
+            const byType = {};
+            cells.forEach((cell, i) => {
+                const t = cellTypeLabels[i];
+                if (!byType[t]) byType[t] = { x: [], y: [], z: [] };
+                byType[t].x.push(cell.x);
+                byType[t].y.push(cell.y);
+                byType[t].z.push(cell.z);
+            });
+
+            const cellTraces = Object.entries(byType).map(([typeLabel, coords]) => ({
+                type: "scatter3d",
+                mode: "markers",
+                x: coords.x,
+                y: coords.y,
+                z: coords.z,
+                marker: {
+                    size: 3,
+                    color: (() => {
+                        let hash = 0;
+                        for (let c of typeLabel) hash = (hash << 5) - hash + c.charCodeAt(0);
+                        const r = (hash >> 16) & 0xFF;
+                        const g = (hash >> 8) & 0xFF;
+                        const b = hash & 0xFF;
+                        return `rgb(${(r + 255) % 256},${(g + 255) % 256},${(b + 255) % 256})`;
+                    })(),
+                    opacity: 0.7
+                },
+                name: typeLabel
+            }));
+
+            const minOxy = Math.min(...cellOxygen);
+            const maxOxy = Math.max(...cellOxygen);
+            function oxygenToColor(val) {
+                const t = (val - minOxy) / (maxOxy - minOxy + 1e-6);
+                const r = Math.round(255 * t);
+                const g = Math.round(60 * t);
+                const b = Math.round(255 * (1 - t));
+                return `rgb(${r},${g},${b})`;
+            }
+            const cellOxygenTrace = {
+                type: "scatter3d",
+                mode: "markers",
+                x: cells.map(c => c.x),
+                y: cells.map(c => c.y),
+                z: cells.map(c => c.z),
+                marker: {
+                    size: 3,
+                    color: cellOxygen.map(oxygenToColor),
+                    opacity: 0.9,
+                    colorbar: {
+                        title: "O₂",
+                        thickness: 12,
+                        len: 0.5,
+                        tickvals: [minOxy, (minOxy + maxOxy) / 2, maxOxy],
+                        ticktext: ["Low", "Med", "High"]
+                    }
+                },
+                name: "Cells (O₂)"
+            };
+
+            const data = [
+                createVesselTrace(arterySegs, getComputedStyle(document.documentElement).getPropertyValue('--artery-color').trim(), "Arteries", 4),
+                createVesselTrace(arterioleSegs, getComputedStyle(document.documentElement).getPropertyValue('--arteriole-color').trim(), "Arterioles", 3),
+                createVesselTrace(capSegs, getComputedStyle(document.documentElement).getPropertyValue('--capillary-color').trim(), "Capillaries", 2),
+                createVesselTrace(venuleSegs, getComputedStyle(document.documentElement).getPropertyValue('--venule-color').trim(), "Venules", 3),
+                createVesselTrace(veinSegs, getComputedStyle(document.documentElement).getPropertyValue('--vein-color').trim(), "Veins", 4),
+                cellOxygenTrace,
+                ...cellTraces
+            ];
+
+            // Add non-physiological segments (if any)
+            if (nonPhysioSegs && nonPhysioSegs.length > 0) {
+                data.push(createVesselTrace(nonPhysioSegs, "#FFD600", "Non-Physio Vessels", 5));
+            }
+
+            const layout = {
+                scene: {
+                    xaxis: { range: [-0.1, 1.1], gridcolor: "#444" },
+                    yaxis: { range: [-0.1, 1.1], gridcolor: "#444" },
+                    zaxis: { range: [-0.1, 1.1], gridcolor: "#444" },
+                    bgcolor: getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim()
+                },
+                paper_bgcolor: getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim(),
+                plot_bgcolor: getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim(),
+                margin: { l: 0, r: 0, t: 0, b: 0 },
+                showlegend: true,
+                legend: {
+                    bgcolor: getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim(),
+                    font: { color: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() }
+                }
+            };
+
+            Plotly.newPlot("plot", data, layout);
+        };
+
+        // -----------------------------
+        // 7. UI SETUP & EVENT HANDLING
+        // -----------------------------
+        document.addEventListener("DOMContentLoaded", () => {
+            const loading = document.getElementById("loading");
+            const updateBtn = document.getElementById("update-btn");
+            const tissueSelect = document.getElementById("tissue-select");
+
+            tissueSelect.value = params.tissueType;
+            tissueSelect.addEventListener("change", () => {
+                params.tissueType = tissueSelect.value;
+            });
+
+            const sliders = [
+                { id: "max-depth", key: "maxDepth", fmt: (v) => v },
+                { id: "angle-range", key: "angleRange", fmt: (v) => v },
+                {
+                    id: "branch-length",
+                    key: "initialBranchLength",
+                    fmt: (v) => v.toFixed(2)
+                },
+                {
+                    id: "capillary-threshold",
+                    key: "capillaryThreshold",
+                    fmt: (v) => v.toFixed(2)
+                },
+                { id: "oxygen-scale", key: "oxygenScale", fmt: (v) => v.toFixed(2) },
+                { id: "num-arteries", key: "numArteries", fmt: (v) => v },
+                { id: "num-veins", key: "numVeins", fmt: (v) => v }
+            ];
+
+            sliders.forEach(({ id, key, fmt }) => {
+                const sliderEl = document.getElementById(id);
+                const valueEl = document.getElementById(`${id}-value`);
+                valueEl.textContent = fmt(parseFloat(sliderEl.value));
+                params[key] = parseFloat(sliderEl.value);
+
+                sliderEl.addEventListener("input", () => {
+                    const val = parseFloat(sliderEl.value);
+                    params[key] = val;
+                    valueEl.textContent = fmt(val);
+                });
+            });
+
+            const updateVisualization = () => {
+                loading.style.display = "block";
+                setTimeout(() => {
+                    try {
+                        const result = simulateVasculature3D(params);
+                        createVisualization(result.segments, result.cells, result.cellTypeLabels, result.cellOxygen, result.nonPhysioSegs);
+                    } catch (err) {
+                        console.error("Simulation error:", err);
+                    } finally {
+                        loading.style.display = "none";
+                    }
+                }, 100);
+            };
+
+            updateBtn.addEventListener("click", updateVisualization);
+            updateVisualization();
+        });
+
+        // -----------------------------
+        // 8. Growth Factor Field Class
+        // -----------------------------
+        class GrowthFactorField {
+            constructor(size = 20, diffusion = 0.05, decay = 0.01) {
+                this.size = size;
+                this.field = numeric.rep([size, size, size], 0);
+                this.diffusion = diffusion;
+                this.decay = decay;
+                this.antiField = numeric.rep([size, size, size], 0);
+            }
+
+            addVEGF(x, y, z, amount) {
+                const ix = Math.floor(x * (this.size - 1));
+                const iy = Math.floor(y * (this.size - 1));
+                const iz = Math.floor(z * (this.size - 1));
+                this.field[ix][iy][iz] += amount;
+            }
+
+            addAnti(x, y, z, amount) {
+                const ix = Math.floor(x * (this.size - 1));
+                const iy = Math.floor(y * (this.size - 1));
+                const iz = Math.floor(z * (this.size - 1));
+                this.antiField[ix][iy][iz] += amount;
+            }
+
+            step() {
+                const newField = numeric.clone(this.field);
+                const newAnti = numeric.clone(this.antiField);
+                for (let x = 1; x < this.size - 1; x++) {
+                    for (let y = 1; y < this.size - 1; y++) {
+                        for (let z = 1; z < this.size - 1; z++) {
+                            let lap =
+                                this.field[x + 1][y][z] + this.field[x - 1][y][z] +
+                                this.field[x][y + 1][z] + this.field[x][y - 1][z] +
+                                this.field[x][y][z + 1] + this.field[x][y][z - 1] -
+                                6 * this.field[x][y][z];
+                            newField[x][y][z] += this.diffusion * lap - this.decay * this.field[x][y][z];
+
+                            let lapA =
+                                this.antiField[x + 1][y][z] + this.antiField[x - 1][y][z] +
+                                this.antiField[x][y + 1][z] + this.antiField[x][y - 1][z] +
+                                this.antiField[x][y][z + 1] + this.antiField[x][y][z - 1] -
+                                6 * this.antiField[x][y][z];
+                            newAnti[x][y][z] += this.diffusion * lapA - this.decay * this.antiField[x][y][z];
+                        }
+                    }
+                }
+                this.field = newField;
+                this.antiField = newAnti;
+            }
+
+            sample(x, y, z) {
+                const ix = Math.max(0, Math.min(this.size - 1, Math.floor(x * (this.size - 1))));
+                const iy = Math.max(0, Math.min(this.size - 1, Math.floor(y * (this.size - 1))));
+                const iz = Math.max(0, Math.min(this.size - 1, Math.floor(z * (this.size - 1))));
+                return {
+                    vegf: this.field[ix][iy][iz],
+                    anti: this.antiField[ix][iy][iz]
+                };
+            }
+        }
+
+        // -----------------------------
+        // 9. Tissue Stiffness Field
+        // -----------------------------
+        class StiffnessField {
+            constructor(size = 20) {
+                this.size = size;
+                this.field = numeric.rep([size, size, size], 0);
+                for (let x = 0; x < size; x++) {
+                    for (let y = 0; y < size; y++) {
+                        for (let z = 0; z < size; z++) {
+                            const fx = x / (size - 1);
+                            const fy = y / (size - 1);
+                            const fz = z / (size - 1);
+                            const d = Math.sqrt((fx - 0.5) ** 2 + (fy - 0.5) ** 2 + (fz - 0.5) ** 2);
+                            this.field[x][y][z] = 0.2 + 1.5 * Math.pow(Math.max(0, d - 0.15), 1.5);
+                        }
+                    }
+                }
+            }
+            sample(x, y, z) {
+                const ix = Math.max(0, Math.min(this.size - 1, Math.floor(x * (this.size - 1))));
+                const iy = Math.max(0, Math.min(this.size - 1, Math.floor(y * (this.size - 1))));
+                const iz = Math.max(0, Math.min(this.size - 1, Math.floor(z * (this.size - 1))));
+                return this.field[ix][iy][iz];
+            }
+        }
+
+        // Estimate gradient of VEGF at a point (central differences)
+        function estimateGradient(field, pos) {
+            const eps = 1.0 / field.size;
+            const cx = pos.x, cy = pos.y, cz = pos.z;
+            const fx1 = field.sample(cx + eps, cy, cz).vegf;
+            const fx0 = field.sample(cx - eps, cy, cz).vegf;
+            const fy1 = field.sample(cx, cy + eps, cz).vegf;
+            const fy0 = field.sample(cx, cy - eps, cz).vegf;
+            const fz1 = field.sample(cx, cy, cz + eps).vegf;
+            const fz0 = field.sample(cx, cy, cz - eps).vegf;
+            return new Vector3((fx1 - fx0) / (2 * eps), (fy1 - fy0) / (2 * eps), (fz1 - fz0) / (2 * eps));
+        }
+
+        // Estimate gradient of stiffness at a point (central differences)
+        function estimateStiffnessGradient(field, pos) {
+            const eps = 1.0 / field.size;
+            const cx = pos.x, cy = pos.y, cz = pos.z;
+            const fx1 = field.sample(cx + eps, cy, cz);
+            const fx0 = field.sample(cx - eps, cy, cz);
+            const fy1 = field.sample(cx, cy + eps, cz);
+            const fy0 = field.sample(cx, cy - eps, cz);
+            const fz1 = field.sample(cx, cy, cz + eps);
+            const fz0 = field.sample(cx, cy, cz - eps);
+            return new Vector3((fx1 - fx0) / (2 * eps), (fy1 - fy0) / (2 * eps), (fz1 - fz0) / (2 * eps));
+        }
+    </script>
+</body>
+</html>
